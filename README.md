@@ -3,7 +3,7 @@
 <p align="center"><b>A MelonLoader mod that lets you design your own slimes in Slime Rancher 2 — colors, parts, plorts and fusions, live in-game.</b></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue">
+  <img src="https://img.shields.io/badge/version-1.0.1-blue">
   <img src="https://img.shields.io/badge/game-Slime%20Rancher%202-ff69b4">
   <img src="https://img.shields.io/badge/loader-MelonLoader%200.7%2B-orange">
   <img src="https://img.shields.io/badge/license-MIT-green">

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using Il2Cpp;
+using Il2CppMonomiPark.SlimeRancher;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using MelonLoader;
 using UnityEngine;
@@ -1459,6 +1460,36 @@ namespace CustomSlimeCreator.Core
             catch (Exception ex) { MelonLogger.Warning("[CustomSlimeCreator] TryInPlaceFusion: " + ex.Message); return false; }
         }
 
+        /// <summary>Gives a spawned largo GameObject the vanilla largo vac behaviour: the vac tugs it toward the
+        /// nozzle but can't suck it in. Driven by Vacuumable.Size = LARGE.</summary>
+        internal static void MakeLargoUnvaccable(GameObject go)
+        {
+            if (go == null) return;
+            TrySet(() =>
+            {
+                var v = go.GetComponent<Vacuumable>();
+                if (v == null) v = go.GetComponentInChildren<Vacuumable>(true);
+                if (v != null) v.Size = VacuumableSize.LARGE;
+            });
+        }
+
+        /// <summary>True if a Vacuumable belongs to one of our fusion largos (used by the Vacuumable.OnEnable patch
+        /// so reloaded largos also get the tug-but-don't-suck behaviour).</summary>
+        internal static bool IsFusionLargoVacuumable(Vacuumable v)
+        {
+            try
+            {
+                if (v == null) return false;
+                var go = v.gameObject;
+                var ia = go != null ? go.GetComponent<IdentifiableActor>() : null;
+                if (ia == null && go != null) ia = go.GetComponentInParent<IdentifiableActor>();
+                var id = ia != null ? ia.identType : null;
+                string n = id != null ? id.name : null;
+                return n != null && n.StartsWith("CustomFusion");
+            }
+            catch { return false; }
+        }
+
         /// <summary>True if <paramref name="plort"/> is one of the fusion largo's two component slimes' plorts.</summary>
         private static bool IsComponentPlort(SlimeDefinition largo, IdentifiableType plort)
         {
@@ -1540,7 +1571,11 @@ namespace CustomSlimeCreator.Core
                 // Make it a proper largo: bigger, and rebuild its eat set so it can eat a 3rd plort (→ Tarr).
                 bool isFusion = false; try { isFusion = (SafeName(largo) ?? "").StartsWith("CustomFusion"); } catch { }
                 TrySet(() => { var se = go.GetComponent<SlimeEat>(); if (se != null) { se.SlimeDefinition = largo; try { se.CalculateAllEats(); } catch { } } });
-                if (isFusion) TrySet(() => go.transform.localScale = go.transform.localScale * 1.6f); // largos are ~1.6× a base slime
+                if (isFusion)
+                {
+                    TrySet(() => go.transform.localScale = go.transform.localScale * 1.6f); // largos are ~1.6× a base slime
+                    MakeLargoUnvaccable(go); // vac tugs but can't suck it in (like a vanilla largo)
+                }
                 try { Object.Destroy(oldGo); } catch { }
                 MelonDebug.Msg($"[CustomSlimeMaker] Fusion → {SafeName(largo)}");
                 return true;

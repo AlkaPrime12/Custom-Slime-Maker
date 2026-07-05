@@ -1,13 +1,14 @@
 using System;
 using HarmonyLib;
 using Il2Cpp;
+using Il2CppMonomiPark.SlimeRancher;
 using MelonLoader;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using CustomSlimeCreator.Core;
 using CustomSlimeCreator.UI;
 
-[assembly: MelonInfo(typeof(CustomSlimeCreator.ModEntry), "Custom Slime Maker", "1.0.0", "AlkaPrime")]
+[assembly: MelonInfo(typeof(CustomSlimeCreator.ModEntry), "Custom Slime Maker", "1.0.1", "AlkaPrime")]
 [assembly: MelonGame("MonomiPark", "SlimeRancher2")]
 
 namespace CustomSlimeCreator
@@ -38,6 +39,19 @@ namespace CustomSlimeCreator
             TryPatchFusion();
             // Patch the eat-gates so a custom-involved slime WILL eat the other's plort (and fuse) on contact.
             TryPatchEatGates();
+            // Patch Vacuumable so our fusion largos get the vanilla "too big to vac" tug behaviour (also on reload).
+            try
+            {
+                var mi = AccessTools.Method(typeof(Vacuumable), "OnEnable");
+                if (mi != null) _harmony.Patch(mi, postfix: new HarmonyMethod(typeof(ModEntry), nameof(PostfixVacuumableEnable)));
+            }
+            catch (System.Exception ex) { MelonLogger.Warning($"[CustomSlimeMaker] patch Vacuumable.OnEnable: {ex.Message}"); }
+        }
+
+        /// <summary>Our fusion largos should tug on the vac but not be sucked in (Vacuumable.Size = LARGE).</summary>
+        private static void PostfixVacuumableEnable(Vacuumable __instance)
+        {
+            try { if (SlimeEngine.IsFusionLargoVacuumable(__instance)) __instance.Size = VacuumableSize.LARGE; } catch { }
         }
 
         private static void TryPatchFusion()

@@ -4,6 +4,7 @@ using Il2Cpp;
 using Il2CppMonomiPark.SlimeRancher;
 using Il2CppMonomiPark.SlimeRancher.Input;
 using Il2CppMonomiPark.SlimeRancher.Economy;
+using Il2CppMonomiPark.SlimeRancher.UI;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using MelonLoader;
 using UnityEngine;
@@ -99,30 +100,82 @@ namespace CustomSlimeCreator.Core
         // ---------------------------------------------------------------- plort economy (market value)
 
         /// <summary>
-        /// Makes a custom plort sellable at a given value by adding it to the economy director's runtime value map.
-        /// Without this the market has no entry for the plort and reports value 0 (or refuses it). Re-applied on
-        /// every build so it survives session restarts / economy recalcs.
+        /// Makes a custom plort fully sellable at the Plort Market: (1) adds it to the market's plort LIST
+        /// (MarketUIConfiguration._plorts) so the shop shows/accepts it, (2) adds a value CONFIG to the economy's
+        /// PlortsTable so its price varies day-to-day like vanilla, and (3) seeds the runtime current-value map so it
+        /// has a price immediately. Re-applied on every build so it survives restarts / economy recalcs.
         /// </summary>
         public static bool SetPlortValue(IdentifiableType plort, int value)
         {
             if (plort == null) return false;
+            float sat = System.Math.Max(50f, value * 5f); // how fast the price sinks as you flood the market
+            bool ok = false;
+
+            // --- Economy: value config (daily variation) + runtime current value ---
             try
             {
-                var sc = SceneContext.Instance;
-                if (sc == null) return false;
-                var econ = sc.PlortEconomyDirector;
-                if (econ == null) return false;
-                var map = econ._currValueMap;
-                if (map == null) return false;
-                float sat = 5f; try { sat = value * 2.5f; } catch { }
-                var entry = new PlortEconomyDirector.CurrValueEntry((float)value, (float)value, (float)value, sat);
-                try { if (map.ContainsKey(plort)) map.Remove(plort); } catch { }
-                map.Add(plort, entry);
-                MelonDebug.Msg($"[CustomSlimeMaker] Plort '{SafeName(plort)}' market value set to {value}.");
-                return true;
+                var econ = SceneContext.Instance != null ? SceneContext.Instance.PlortEconomyDirector : null;
+                if (econ != null)
+                {
+                    // (a) PlortsTable config → the daily market simulation knows this plort + its base value.
+                    Try(() =>
+                    {
+                        var settings = econ._settings;
+                        if (settings == null) return;
+                        var table = settings.PlortsTable;
+                        var arr = table.Plorts;
+                        if (!VcContains(arr, plort))
+                        {
+                            var cfg = new PlortValueConfiguration();
+                            cfg.Type = plort; cfg.InitialValue = value; cfg.FullSaturation = sat;
+                            table.Plorts = AppendVc(arr, cfg);
+                            settings.PlortsTable = table;   // write the (value-type) table back
+                            econ._settings = settings;
+                        }
+                    });
+                    // (b) runtime current value → immediate price.
+                    Try(() =>
+                    {
+                        var map = econ._currValueMap;
+                        if (map == null) return;
+                        var entry = new PlortEconomyDirector.CurrValueEntry((float)value, (float)value, (float)value, sat);
+                        if (map.ContainsKey(plort)) map.Remove(plort);
+                        map.Add(plort, entry);
+                        ok = true;
+                    });
+                }
             }
-            catch (Exception ex) { MelonLogger.Warning("[CustomSlimeCreator] SetPlortValue: " + ex.Message); return false; }
+            catch (Exception ex) { MelonLogger.Warning("[CustomSlimeMaker] plort economy: " + ex.Message); }
+
+            // --- Market list: add the plort to every MarketUIConfiguration so the shop lists + buys it ---
+            try
+            {
+                var cfgs = Resources.FindObjectsOfTypeAll<MarketUIConfiguration>();
+                if (cfgs != null)
+                    for (int i = 0; i < cfgs.Length; i++)
+                    {
+                        var c = cfgs[i]; if (c == null) continue;
+                        var arr = c._plorts;
+                        if (PeContains(arr, plort)) continue;
+                        var pe = new PlortEntry(); pe.IdentType = plort;
+                        c._plorts = AppendPe(arr, pe);
+                        ok = true;
+                    }
+            }
+            catch (Exception ex) { MelonLogger.Warning("[CustomSlimeMaker] plort market list: " + ex.Message); }
+
+            if (ok) MelonDebug.Msg($"[CustomSlimeMaker] Plort '{SafeName(plort)}' sellable at {value}.");
+            return ok;
         }
+
+        private static bool VcContains(Il2CppReferenceArray<PlortValueConfiguration> a, IdentifiableType p)
+        { if (a == null) return false; for (int i = 0; i < a.Length; i++) { try { if (a[i] != null && a[i].Type == p) return true; } catch { } } return false; }
+        private static Il2CppReferenceArray<PlortValueConfiguration> AppendVc(Il2CppReferenceArray<PlortValueConfiguration> a, PlortValueConfiguration item)
+        { int n = a != null ? a.Length : 0; var r = new Il2CppReferenceArray<PlortValueConfiguration>(n + 1); for (int i = 0; i < n; i++) r[i] = a[i]; r[n] = item; return r; }
+        private static bool PeContains(Il2CppReferenceArray<PlortEntry> a, IdentifiableType p)
+        { if (a == null) return false; for (int i = 0; i < a.Length; i++) { try { if (a[i] != null && a[i].IdentType == p) return true; } catch { } } return false; }
+        private static Il2CppReferenceArray<PlortEntry> AppendPe(Il2CppReferenceArray<PlortEntry> a, PlortEntry item)
+        { int n = a != null ? a.Length : 0; var r = new Il2CppReferenceArray<PlortEntry>(n + 1); for (int i = 0; i < n; i++) r[i] = a[i]; r[n] = item; return r; }
 
         // ---------------------------------------------------------------- largo / fusion registry
 
