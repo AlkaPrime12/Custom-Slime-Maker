@@ -436,7 +436,7 @@ namespace CustomSlimeCreator.Core
         // NOTE: we persist icons as RAW pixels (.icraw), NOT PNG. UnityEngine.ImageConversion.EncodeToPNG/LoadImage
         // throw "Method not found: ReadOnlySpan.GetPinnableReference" in this Il2CppInterop build, so PNG never saved
         // or loaded (that's why icons didn't persist). GetPixels32/SetPixels32 work fine, so we use those.
-        private static string IconPngPath(string name) => System.IO.Path.Combine(IconDir, ConfigStore.Sanitize(name) + ".icraw");
+        private static string IconPngPath(string name) => System.IO.Path.Combine(IconDir, ConfigStore.Sanitize(name) + ".ic2");
         private static string IconSigPath(string name) => System.IO.Path.Combine(IconDir, ConfigStore.Sanitize(name) + ".sig");
 
         /// <summary>Writes a texture as raw pixels: [int w][int h][w*h * RGBA bytes]. Avoids ImageConversion (broken).</summary>
@@ -842,7 +842,7 @@ namespace CustomSlimeCreator.Core
             }
         }
 
-        private static string VanillaIconPath(string preset) => System.IO.Path.Combine(IconDir, "vanilla_" + ConfigStore.Sanitize(preset) + ".icraw");
+        private static string VanillaIconPath(string preset) => System.IO.Path.Combine(IconDir, "vanilla_" + ConfigStore.Sanitize(preset) + ".ic2");
 
         /// <summary>Renders a vanilla slime's 3D model to a cached icon (once), so the Fusions tab can show it without
         /// touching the game's crash-prone atlas textures. No-op if already cached.</summary>
@@ -861,7 +861,7 @@ namespace CustomSlimeCreator.Core
             catch { }
         }
 
-        private static string PlortIconPngPath(string key) => System.IO.Path.Combine(IconDir, ConfigStore.Sanitize(key) + "_plort.icraw");
+        private static string PlortIconPngPath(string key) => System.IO.Path.Combine(IconDir, ConfigStore.Sanitize(key) + "_plort.ic2");
         private static string PlortIconSigPath(string key) => System.IO.Path.Combine(IconDir, ConfigStore.Sanitize(key) + "_plort.sig");
         private static string PlortLookSig(SlimeConfig c)
         { string C(Col x) => x.r + "," + x.g + "," + x.b; return "v2|" + c.BasePreset + "|" + C(c.PlortTop) + C(c.PlortMiddle) + C(c.PlortBottom); }
@@ -930,9 +930,9 @@ namespace CustomSlimeCreator.Core
                     if (!has) { b = r.bounds; has = true; } else b.Encapsulate(r.bounds);
                 }
                 Vector3 center = has ? b.center : basePos;
-                // Tight framing so the model fills the icon (was appearing too far/zoomed out). Clamp guards against
-                // an oversized bound from a stray particle/effect renderer.
-                float extent = has ? Mathf.Clamp(Mathf.Max(b.extents.x, b.extents.y), 0.05f, 2f) : 0.3f;
+                // Frame the whole model with a bit of margin (the render was cropping / off-center before). Clamp
+                // guards against an oversized bound from a stray particle/effect renderer.
+                float extent = has ? Mathf.Clamp(Mathf.Max(b.extents.x, b.extents.y), 0.05f, 3f) : 0.5f;
 
                 camObj = new GameObject("CSC_IconCam");
                 var cam = camObj.AddComponent<Camera>();
@@ -940,18 +940,26 @@ namespace CustomSlimeCreator.Core
                 cam.clearFlags = CameraClearFlags.SolidColor;
                 cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
                 cam.orthographic = true;
-                cam.orthographicSize = extent * 1.1f;
+                cam.orthographicSize = extent * 1.35f; // margin so nothing is cropped
                 cam.nearClipPlane = 0.01f; cam.farClipPlane = 100f;
-                cam.transform.position = center + new Vector3(0, 0, -5);
+                // Look slightly down at the model (nicer 3/4 view than dead-on).
+                cam.transform.position = center + new Vector3(0f, extent * 0.35f, -6f);
                 cam.transform.LookAt(center);
 
                 rt = new RenderTexture(size, size, 24, RenderTextureFormat.ARGB32); rt.Create();
                 cam.targetTexture = rt;
 
+                // Bright POINT lights (NOT directional — a directional light washes out the whole game scene).
+                // Two close key/fill lights so the model reads clearly instead of coming out dark.
                 lightObj = new GameObject("CSC_IconLight");
-                var l = lightObj.AddComponent<Light>();
-                l.type = LightType.Point; l.range = 40f; l.intensity = 3.5f; l.color = Color.white;
-                l.transform.position = center + new Vector3(1.5f, 1.5f, -3f);
+                var key = lightObj.AddComponent<Light>();
+                key.type = LightType.Point; key.range = 15f; key.intensity = 6f; key.color = Color.white;
+                key.transform.position = center + new Vector3(1.2f, 1.2f, -2.5f);
+                var fillObj = new GameObject("CSC_IconFill");
+                fillObj.transform.SetParent(lightObj.transform, false);
+                var fill = fillObj.AddComponent<Light>();
+                fill.type = LightType.Point; fill.range = 15f; fill.intensity = 3f; fill.color = Color.white;
+                fill.transform.position = center + new Vector3(-1.5f, -0.5f, -2.5f);
 
                 cam.Render();
                 var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
@@ -1297,7 +1305,9 @@ namespace CustomSlimeCreator.Core
             string combined = NameGenerator.Combine(CleanForMerge(aDisp), CleanForMerge(bDisp));
             TrySet(() => { var ln = GameAccess.MakeName(combined); if (ln != null) largo.localizedName = ln; });
 
-            GameAccess.RegisterSlime(largo, false); // largos are NOT vaccable ("gordos" shouldn't be suckable)
+            // Register with FULL groups so the largo SAVES/RESTORES like a normal slime (missing groups was why
+            // fused largos vanished on reload). Non-suckability is handled separately via Vacuumable.Size = LARGE.
+            GameAccess.RegisterSlime(largo, true);
             GameAccess.RegisterLargo(largo, a, b, plortA, plortB);
             Fusions[key] = largo;
 

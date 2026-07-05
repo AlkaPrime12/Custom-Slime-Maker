@@ -8,7 +8,7 @@ using UnityEngine.InputSystem;
 using CustomSlimeCreator.Core;
 using CustomSlimeCreator.UI;
 
-[assembly: MelonInfo(typeof(CustomSlimeCreator.ModEntry), "Custom Slime Maker", "1.0.1", "AlkaPrime")]
+[assembly: MelonInfo(typeof(CustomSlimeCreator.ModEntry), "Custom Slime Maker", "1.0.2", "AlkaPrime")]
 [assembly: MelonGame("MonomiPark", "SlimeRancher2")]
 
 namespace CustomSlimeCreator
@@ -169,8 +169,6 @@ namespace CustomSlimeCreator
         }
 
         private static int _eatWarned;
-        private static int _eatLogged;
-        private static float _nextEatLog;
         private static System.Exception FinalizeCalculateAllEats(System.Exception __exception)
         {
             if (__exception != null && _eatWarned < 5)
